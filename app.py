@@ -170,10 +170,10 @@ def main():
                 
                 # Export functionality
                 st.subheader("📤 Export Results")
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    if st.button(f"Export {file.name} Results as CSV", key=f"csv_{file.name}"):
+                    if st.button(f"Export {file.name} as CSV", key=f"csv_{file.name}"):
                         csv_data = analyzer.export_to_csv(results)
                         st.download_button(
                             label="Download CSV",
@@ -183,7 +183,17 @@ def main():
                         )
                 
                 with col2:
-                    if st.button(f"Export {file.name} Results as JSON", key=f"json_{file.name}"):
+                    if st.button(f"Export {file.name} as Excel", key=f"excel_{file.name}"):
+                        excel_data = analyzer.export_to_excel(results)
+                        st.download_button(
+                            label="Download Excel",
+                            data=excel_data,
+                            file_name=f"{file.name}_analysis.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                
+                with col3:
+                    if st.button(f"Export {file.name} as JSON", key=f"json_{file.name}"):
                         json_data = analyzer.export_to_json(results)
                         st.download_button(
                             label="Download JSON",

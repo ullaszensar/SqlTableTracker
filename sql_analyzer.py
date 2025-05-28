@@ -2,6 +2,7 @@ import sqlparse
 import re
 import json
 import io
+import pandas as pd
 from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 
@@ -315,3 +316,71 @@ class SQLAnalyzer:
     def export_to_json(self, results: Dict) -> str:
         """Export analysis results to JSON format"""
         return json.dumps(results, indent=2, ensure_ascii=False)
+    
+    def export_to_excel(self, results: Dict) -> bytes:
+        """Export analysis results to Excel format"""
+        output = io.BytesIO()
+        
+        # Create workbook and worksheets
+        from openpyxl import Workbook
+        wb = Workbook()
+        
+        # Remove default sheet
+        wb.remove(wb.active)
+        
+        # Summary Sheet
+        ws_summary = wb.create_sheet("Summary")
+        ws_summary.append(['Metric', 'Count'])
+        ws_summary.append(['Total Statements', results['total_statements']])
+        ws_summary.append(['Unique Tables', len(results['from_tables'])])
+        ws_summary.append(['Temporary Tables', len(results['temp_tables'])])
+        ws_summary.append(['CTEs', len(results['ctes'])])
+        
+        # FROM Tables Sheet
+        if results['from_tables']:
+            ws_tables = wb.create_sheet("FROM Tables")
+            ws_tables.append(['Table Name', 'Occurrences', 'Statements', 'First Appearance'])
+            
+            for table_name, occurrences in results['from_tables'].items():
+                ws_tables.append([
+                    table_name,
+                    len(occurrences),
+                    ', '.join(map(str, occurrences)),
+                    f"Statement {min(occurrences)}"
+                ])
+        
+        # Temporary Tables Sheet
+        if results['temp_tables'] or results['ctes']:
+            ws_temp = wb.create_sheet("Temporary Tables & CTEs")
+            ws_temp.append(['Name', 'Type', 'Statement Number', 'Definition'])
+            
+            # Add temporary tables
+            for temp_table in results['temp_tables']:
+                ws_temp.append([
+                    temp_table['name'],
+                    temp_table['type'],
+                    temp_table['statement_num'],
+                    temp_table['definition']
+                ])
+            
+            # Add CTEs
+            for cte in results['ctes']:
+                ws_temp.append([
+                    cte['name'],
+                    'CTE',
+                    cte['statement_num'],
+                    cte['definition']
+                ])
+        
+        # Dependencies Sheet
+        if results['dependencies']:
+            ws_deps = wb.create_sheet("Dependencies")
+            ws_deps.append(['Statement Number', 'Tables Used'])
+            
+            for stmt_num, deps in results['dependencies'].items():
+                if deps:
+                    ws_deps.append([stmt_num, ', '.join(deps)])
+        
+        # Save to BytesIO
+        wb.save(output)
+        return output.getvalue()
