@@ -236,7 +236,7 @@ class SQLAnalyzer:
         # Remove quotes and brackets
         name = re.sub(r'^["`\[\]]+|["`\[\]]+$', '', name.strip())
         
-        # Remove schema prefix (keep only table name)
+        # Remove schema/database prefix (keep only table name)
         if '.' in name:
             parts = name.split('.')
             name = parts[-1]  # Get the last part (table name)
@@ -249,6 +249,19 @@ class SQLAnalyzer:
     def _is_valid_table_name(self, name: str) -> bool:
         """Check if the extracted name is likely a valid table name"""
         if not name:
+            return False
+        
+        # Skip tables that start with "sessionid" (temporary tables)
+        if name.lower().startswith('sessionid'):
+            return False
+        
+        # Skip common database names
+        database_names = {
+            'cstonedb3', 'mysql', 'postgres', 'oracle', 'sqlserver', 'sqlite',
+            'information_schema', 'performance_schema', 'sys', 'master', 'tempdb', 'model', 'msdb'
+        }
+        
+        if name.lower() in database_names:
             return False
         
         # Skip SQL keywords and common non-table tokens
