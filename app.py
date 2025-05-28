@@ -24,6 +24,7 @@ def main():
         
         show_statistics = st.checkbox("Show Usage Statistics", value=True)
         show_dependencies = st.checkbox("Show Table Dependencies", value=True)
+        debug_mode = st.checkbox("Debug Mode", value=False, help="Show detailed parsing information")
     
     # File upload
     uploaded_file = st.file_uploader(
@@ -46,6 +47,19 @@ def main():
                 
                 # Analyze SQL content
                 results = analyzer.analyze_sql(content, file.name)
+                
+                # Show debug information if enabled
+                if debug_mode:
+                    with st.expander(f"Debug Info for {file.name}"):
+                        st.write("**Raw SQL Content (first 500 chars):**")
+                        st.code(content[:500], language='sql')
+                        st.write("**Parsed Statements:**")
+                        statements = content.split(';')
+                        for i, stmt in enumerate(statements, 1):
+                            if stmt.strip():
+                                st.write(f"Statement {i}: {stmt.strip()[:100]}...")
+                        st.write("**Analysis Results:**")
+                        st.json(results)
                 
                 if results['error']:
                     st.error(f"Error analyzing {file.name}: {results['error']}")

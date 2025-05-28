@@ -94,29 +94,30 @@ class SQLAnalyzer:
     def _extract_from_tables(self, parsed_stmt, statement_num: int) -> Set[str]:
         """Extract table names from FROM clauses"""
         tables = set()
+        statement_str = str(parsed_stmt).upper()
         
-        def extract_from_token(token):
-            if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'FROM':
-                return True
-            return False
+        # Use regex patterns to find table names more reliably
+        patterns = [
+            # FROM table_name
+            r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)',
+            # JOIN table_name
+            r'JOIN\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)',
+            # UPDATE table_name
+            r'UPDATE\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)',
+            # INSERT INTO table_name
+            r'INTO\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)',
+        ]
         
-        def extract_table_name(token):
-            """Extract clean table name from token"""
-            if hasattr(token, 'tokens'):
-                for sub_token in token.tokens:
-                    name = extract_table_name(sub_token)
-                    if name:
-                        return name
-            elif token.ttype is None and not token.is_whitespace:
-                # Clean table name (remove quotes, schema prefixes)
-                name = str(token).strip()
-                name = re.sub(r'^["`\[\]]+|["`\[\]]+$', '', name)  # Remove quotes
-                if '.' in name:
-                    name = name.split('.')[-1]  # Get table name from schema.table
-                return name
-            return None
+        original_stmt = str(parsed_stmt)
         
-        # Walk through tokens to find FROM clauses
+        for pattern in patterns:
+            matches = re.finditer(pattern, original_stmt, re.IGNORECASE)
+            for match in matches:
+                table_name = self._clean_table_name(match.group(1))
+                if table_name and self._is_valid_table_name(table_name):
+                    tables.add(table_name)
+        
+        # Also try the token-based approach for complex cases
         tokens = list(parsed_stmt.flatten())
         for i, token in enumerate(tokens):
             if (token.ttype is sqlparse.tokens.Keyword and 
@@ -126,21 +127,23 @@ class SQLAnalyzer:
                 for j in range(i + 1, min(i + 10, len(tokens))):
                     next_token = tokens[j]
                     
+                    # Skip whitespace and punctuation
+                    if next_token.is_whitespace or next_token.value in ['(', ')', ',']:
+                        continue
+                    
                     # Stop at certain keywords
                     if (next_token.ttype is sqlparse.tokens.Keyword and 
                         next_token.value.upper() in ['WHERE', 'GROUP', 'ORDER', 'HAVING', 
-                                                   'LIMIT', 'UNION', 'JOIN', 'ON', 'INNER',
-                                                   'LEFT', 'RIGHT', 'FULL', 'CROSS']):
+                                                   'LIMIT', 'UNION', 'ON', 'INNER',
+                                                   'LEFT', 'RIGHT', 'FULL', 'CROSS', 'AS']):
                         break
                     
                     # Extract table name
-                    if (next_token.ttype is None and 
-                        not next_token.is_whitespace and
-                        not next_token.value in ['(', ')', ',', 'AS']):
-                        
+                    if next_token.ttype is None or next_token.ttype in [sqlparse.tokens.Name]:
                         table_name = self._clean_table_name(next_token.value)
                         if table_name and self._is_valid_table_name(table_name):
                             tables.add(table_name)
+                            break  # Found a table name, move to next FROM/JOIN
         
         # Also check for subqueries and CTEs
         tables.update(self._extract_subquery_tables(parsed_stmt))
@@ -256,14 +259,19 @@ class SQLAnalyzer:
             'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'BETWEEN', 'LIKE',
             'IS', 'NULL', 'TRUE', 'FALSE', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
             'UNION', 'INTERSECT', 'EXCEPT', 'ALL', 'DISTINCT', 'AS',
-            'ASC', 'DESC', 'BY', 'INTO', 'VALUES', 'SET'
+            'ASC', 'DESC', 'BY', 'INTO', 'VALUES', 'SET', 'TABLE', 'TEMP',
+            'TEMPORARY', 'WITH', 'IF', 'NOT', 'EXISTS'
         }
         
         if name.upper() in sql_keywords:
             return False
         
-        # Check for valid identifier pattern
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+        # More flexible pattern to allow various table name formats
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_#$]*$', name):
+            return False
+        
+        # Skip very short names that are likely not table names
+        if len(name) < 2:
             return False
         
         return True
